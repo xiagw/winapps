@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
 
-path_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-
-MAKEDEMO=0
-USEDEMO=0
-
-source "${path_script}/inquirer.sh"
-
-INSTALLED_EXES=()
-
 _wa_usage() {
     echo "Usage:
   ./bin/installer.sh --user    # Install everything in ${HOME}
   ./bin/installer.sh --system  # Install everything in /usr"
-    exit
+    exit 1
 }
 
 _wa_no_sudo() {
@@ -29,7 +20,7 @@ _wa_install() {
 
 _wa_find_installed() {
     echo -n "  Checking for installed apps in RDP machine (this may take a while)..."
-    if [ $USEDEMO != 1 ]; then
+    if [ "${USEDEMO:-0}" != 1 ]; then
         rm -f "${HOME}"/.local/share/winapps/installed.bat
         rm -f "${HOME}"/.local/share/winapps/installed.tmp
         rm -f "${HOME}"/.local/share/winapps/installed
@@ -64,7 +55,7 @@ _wa_find_installed() {
                 exit
             fi
         done
-        if [ $MAKEDEMO = 1 ]; then
+        if [ "${MAKEDEMO:-0}" = 1 ]; then
             rm -rf /tmp/winapps_demo
             cp -a "${HOME}"/.local/share/winapps /tmp/winapps_demo
             exit
@@ -80,7 +71,7 @@ _wa_find_installed() {
 _wa_config_app() {
     source "${SYS_PATH}/apps/${1}/info"
     echo -n "  Configuring ${NAME}..."
-    if [ ${USEDEMO} != 1 ]; then
+    if [ "${USEDEMO:-0}" != 1 ]; then
         ${SUDO} rm -f "${APP_PATH}/${1}.desktop"
         echo "[Desktop Entry]
 Name=${NAME}
@@ -214,7 +205,7 @@ MIME_TYPES=\"\"
 
 _wa_config_windows() {
     echo -n "  Configuring Windows..."
-    if [ ${USEDEMO} != 1 ]; then
+    if [ "${USEDEMO:-0}" != 1 ]; then
         ${SUDO} rm -f "${APP_PATH}/windows.desktop"
         ${SUDO} mkdir -p "${SYS_PATH}/icons"
         ${SUDO} cp "${path_script}/../docs/icons/windows.svg" "${SYS_PATH}/icons/windows.svg"
@@ -273,18 +264,7 @@ _wa_uninstall_sys() {
     done
 }
 
-if [ -z "${1}" ]; then
-    OPTIONS=(User System)
-    menuFromArr INSTALL_TYPE "Would you like to install for the current user or the whole system?" "${OPTIONS[@]}"
-elif [ "${1}" = '--user' ]; then
-    INSTALL_TYPE='User'
-elif [ "${1}" = '--system' ]; then
-    INSTALL_TYPE='System'
-else
-    _wa_usage
-fi
-
-if [ "${INSTALL_TYPE}" = 'User' ]; then
+_install_user() {
     SUDO=""
     BIN_PATH="${HOME}/.local/bin"
     APP_PATH="${HOME}/.local/share/applications"
@@ -292,15 +272,9 @@ if [ "${INSTALL_TYPE}" = 'User' ]; then
     [ -d "${BIN_PATH}" ] || mkdir -p "${BIN_PATH}"
     [ -d "${APP_PATH}" ] || mkdir -p "${APP_PATH}"
     [ -d "${SYS_PATH}" ] || mkdir -p "${SYS_PATH}"
-    if [ -n "${2}" ]; then
-        if [ "${2}" = '--uninstall' ]; then
-            _wa_uninstall_user
-            exit
-        else
-            _wa_usage
-        fi
-    fi
-elif [ "${INSTALL_TYPE}" = 'System' ]; then
+}
+
+_install_sys() {
     SUDO="sudo"
     sudo ls >/dev/null
     BIN_PATH="/usr/local/bin"
@@ -309,33 +283,170 @@ elif [ "${INSTALL_TYPE}" = 'System' ]; then
     [ -d "${BIN_PATH}" ] || $SUDO mkdir -p "${BIN_PATH}"
     [ -d "${APP_PATH}" ] || $SUDO mkdir -p "${APP_PATH}"
     [ -d "${SYS_PATH}" ] || $SUDO mkdir -p "${SYS_PATH}"
-    if [ -n "${2}" ]; then
-        if [ "${2}" = '--uninstall' ]; then
+}
+
+_debug_log() {
+    if [ "${DEBUG}" = "true" ]; then
+        echo "[$(date)-${RANDOM}] ${1}" >>"$path_share/winapps.log"
+    fi
+}
+
+_installer() {
+    path_script="$(cd "$(dirname "$0")" && pwd)"
+    INSTALLED_EXES=()
+    source "${path_script}/inquirer.sh"
+
+    while [[ "${#}" -ge 0 ]]; do
+        case "${1}" in
+        -u | --user)
+            _install_user
+            break
+            ;;
+        -s | --system)
+            _install_sys
+            break
+            ;;
+        -d | --demo)
+            USEDEMO=1
+            ;;
+        --uninstall)
+            _wa_uninstall_user
             _wa_uninstall_sys
-            exit
+            ;;
+        *)
+            if [[ "${#}" -gt 0 ]]; then
+                _wa_usage
+                exit 1
+            fi
+            OPTIONS=(User System)
+            menuFromArr INSTALL_TYPE "Would you like to install for the current user or the whole system?" "${OPTIONS[@]}"
+            break
+            ;;
+        esac
+        shift
+    done
+
+    echo "Removing any old configurations..."
+    _wa_uninstall_user
+    _wa_uninstall_sys
+
+    echo "Installing..."
+    # Inititialize
+    _wa_install
+
+    # Check for installed apps
+    _wa_find_installed
+
+    # Install windows
+    _wa_config_windows
+
+    # Configure apps
+    _wa_config_apps
+    _wa_config_detected_apps
+
+    echo "Installation complete."
+}
+
+main() {
+    path_script="$(cd "$(dirname "$0")" && pwd)"
+    path_conf="${HOME}/.config/winapps"
+    path_share="${HOME}/.local/share/winapps"
+    file_conf="${path_conf}/winapps.conf"
+
+    [ -d "$path_conf" ] || mkdir -p "$path_conf"
+    [ -d "${path_share}" ] || mkdir -p "$path_share"
+    if [ -f "$file_conf" ]; then
+        source "${file_conf}"
+    else
+        cp "$path_script/../docs/winapps-example.conf" "$file_conf"
+        echo "You need to modify $file_conf, exit."
+        exit 1
+    fi
+
+    if ! command -v xfreerdp >/dev/null; then
+        ## try to install the software on Ubuntu
+        if sudo apt-get install -y freerdp2-x11; then
+            echo "Installed xfreerdp"
         else
-            _wa_usage
+            echo "You need xfreerdp!"
+            echo "  sudo apt-get install -y freerdp2-x11"
+            exit
         fi
     fi
-fi
 
-echo "Removing any old configurations..."
-_wa_uninstall_user
-_wa_uninstall_sys
+    if [ -f "$path_share/run" ]; then
+        last_run=$(stat -t -c %Y "$path_share/run")
+        touch "$path_share/run"
+        this_run=$(stat -t -c %Y "$path_share/run")
+        if ((this_run - last_run < 2)); then
+            echo "time is too short!"
+            exit 1
+        fi
+    else
+        touch "$path_share/run"
+    fi
 
-echo "Installing..."
+    RDP_NAME="${RDP_NAME:-RDPWindows}"
 
-# Inititialize
-_wa_install
+    if [ -z "${RDP_IP}" ]; then
+        ## try to get the IP from the VM
+        if ! groups | grep -q libvirt; then
+            echo "You are not a member of the libvirt group. Run the below then reboot."
+            echo "  sudo usermod -a -G libvirt \$(whoami)"
+            echo "  sudo usermod -a -G kvm \$(whoami)"
+            exit 1
+        fi
+        if ! virsh list | grep -q "${RDP_NAME}"; then
+            echo "${RDP_NAME} is not running, run:"
+            echo "  virsh start ${RDP_NAME}"
+            exit 1
+        fi
+        RDP_IP=$(virsh net-dhcp-leases default | grep "${RDP_NAME}" | awk '{print $5}')
+        RDP_IP=${RDP_IP%%\/*}
+    fi
 
-# Check for installed apps
-_wa_find_installed
+    if [ "${MULTIMON}" = "true" ]; then
+        MULTI_FLAG="/multimon"
+    else
+        MULTI_FLAG="/span"
+    fi
 
-# Install windows
-_wa_config_windows
+    xfreerdp_opt="xfreerdp ${RDP_FLAGS} /d:${RDP_DOMAIN} /u:${RDP_USER} /p:${RDP_PASS} /v:${RDP_IP} -decorations /cert:ignore +auto-reconnect +clipboard +home-drive -wallpaper /scale:${RDP_SCALE:-100} /dynamic-resolution"
+    case $1 in
+    windows)
+        $xfreerdp_opt /wm-class:"Microsoft Windows" >/dev/null 2>&1 &
+        ;;
+    check)
+        $xfreerdp_opt ${MULTI_FLAG} /app:"explorer.exe"
+        ;;
+    manual)
+        $xfreerdp_opt ${MULTI_FLAG} /app:"${2}" >/dev/null 2>&1 &
+        ;;
+    install)
+        _installer "$@"
+        ;;
+    *)
+        if [ -e "${path_script}/../apps/${1}/info" ]; then
+            source "${path_script}/../apps/${1}/info"
+            ICON="${path_script}/../apps/${1}/icon.svg"
+        elif [ -e "$path_share/apps/${1}/info" ]; then
+            source "$path_share/apps/${1}/info"
+            ICON="$path_share/apps/${1}/icon.svg"
+        elif [ -e "/usr/local/share/winapps/apps/${1}/info" ]; then
+            source "/usr/local/share/winapps/apps/${1}/info"
+            ICON="/usr/local/share/winapps/apps/${1}/icon.svg"
+        else
+            echo "You need to run 'install.sh' first."
+            exit 1
+        fi
+        if [ -n "${2}" ]; then
+            FILE=$(echo "${2}" | sed 's|'"${HOME}"'|\\\\tsclient\\home|;s|/|\\|g;s|\\|\\\\|g')
+            $xfreerdp_opt ${MULTI_FLAG} /wm-class:"${FULL_NAME}" /app:"${WIN_EXECUTABLE}" /app-icon:"${ICON}" /app-cmd:"\"${FILE}\"" >/dev/null 2>&1 &
+        else
+            $xfreerdp_opt ${MULTI_FLAG} /wm-class:"${FULL_NAME}" /app:"${WIN_EXECUTABLE}" /app-icon:"${ICON}" 1>/dev/null 2>&1 &
+        fi
+        ;;
+    esac
+}
 
-# Configure apps
-_wa_config_apps
-_wa_config_detected_apps
-
-echo "Installation complete."
+main "$@"
