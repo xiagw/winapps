@@ -2,14 +2,14 @@
 
 _wa_usage() {
     echo "Usage:
-  ./bin/installer.sh --user    # Install everything in ${HOME}
-  ./bin/installer.sh --system  # Install everything in /usr"
+  $0 --install --user    # Install everything in ${HOME}
+  $0 --install --system  # Install everything in /usr"
     exit 1
 }
 
 _wa_no_sudo() {
-    echo 'You are attempting to switch from a --system install to a --user install.
-Please run "./bin/installer.sh --system --uninstall" first.'
+    echo "You are attempting to switch from a --system install to a --user install.
+Please run \"$0 --install --system --uninstall\" first."
     exit
 }
 
@@ -44,7 +44,7 @@ _wa_find_installed() {
                 echo " Finished."
                 echo ""
                 echo "The RDP connection failed to connect or run. Please confirm FreeRDP can connect with:"
-                echo "  bin/winapps check"
+                echo "  winapps check"
                 echo ""
                 echo "If it cannot connect, this is most likely due to:"
                 echo "  - You need to accept the security cert the first time you connect (with 'check')"
@@ -246,7 +246,7 @@ _wa_uninstall_user() {
 _wa_uninstall_sys() {
     echo "Uninstalling (system)..."
     ${SUDO} rm -rf "/usr/local/share/winapps" "/usr/local/bin/winapps"
-    for F in $(grep -l -d skip "bin/winapps" "/usr/share/applications/"*); do
+    for F in $(grep -l -d skip "winapps" "/usr/share/applications/"*); do
         if [ -z "${SUDO}" ]; then
             _wa_no_sudo
         fi
@@ -254,7 +254,7 @@ _wa_uninstall_sys() {
         ${SUDO} rm "${F}"
         echo " Finished."
     done
-    for F in $(grep -l -d skip "bin/winapps" "/usr/local/bin/"*); do
+    for F in $(grep -l -d skip "winapps" "/usr/local/bin/"*); do
         if [ -z "${SUDO}" ]; then
             _wa_no_sudo
         fi
