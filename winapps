@@ -2,8 +2,8 @@
 
 _wa_usage() {
     echo "Usage:
-  $0 --install --user    # Install everything in ${HOME}
-  $0 --install --system  # Install everything in /usr"
+  $0 install --user    # Install everything in ${HOME}
+  $0 install --system  # Install everything in /usr"
     exit 1
 }
 
