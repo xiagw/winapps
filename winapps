@@ -9,7 +9,7 @@ _wa_usage() {
 
 _wa_no_sudo() {
     echo "You are attempting to switch from a --system install to a --user install.
-Please run \"$0 --install --system --uninstall\" first."
+Please run \"$0 install --system --uninstall\" first."
     exit
 }
 
@@ -436,7 +436,7 @@ main() {
             source "/usr/local/share/winapps/apps/${1}/info"
             ICON="/usr/local/share/winapps/apps/${1}/icon.svg"
         else
-            echo "You need to run 'install.sh' first."
+            echo "You need to run \"$0 install\" first."
             exit 1
         fi
         if [ -n "${2}" ]; then
