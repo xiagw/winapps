@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 
-_wa_usage() {
+_usage() {
     echo "Usage:
   $0 install --user    # Install everything in ${HOME}
   $0 install --system  # Install everything in /usr"
     exit 1
 }
 
-_wa_no_sudo() {
+_no_sudo() {
     echo "You are attempting to switch from a --system install to a --user install.
 Please run \"$0 install --system --uninstall\" first."
     exit
 }
 
-_wa_install() {
+_install() {
     ${SUDO} mkdir -p "${SYS_PATH}/apps"
     source "${path_script}/winapps" install
 }
 
-_wa_find_installed() {
+_find_installed() {
     echo -n "  Checking for installed apps in RDP machine (this may take a while)..."
     if [ "${USEDEMO:-0}" != 1 ]; then
         rm -f "${HOME}"/.local/share/winapps/installed.bat
@@ -68,7 +68,7 @@ _wa_find_installed() {
     echo " Finished."
 }
 
-_wa_config_app() {
+_config_app() {
     source "${SYS_PATH}/apps/${1}/info"
     echo -n "  Configuring ${NAME}..."
     if [ "${USEDEMO:-0}" != 1 ]; then
@@ -93,7 +93,7 @@ ${BIN_PATH}/winapps ${1} $*
     echo " Finished."
 }
 
-_wa_config_apps() {
+_config_apps() {
     APPS=()
     for F in $(sed 's/\r/\n/g' "${HOME}/.local/share/winapps/installed"); do
         source "${path_script}/../apps/${F}/info"
@@ -129,7 +129,7 @@ _wa_config_apps() {
     fi
 }
 
-_wa_config_detected_apps() {
+_config_detected_apps() {
     if [ -f "${HOME}/.local/share/winapps/detected" ]; then
         sed -i 's/\r//g' "${HOME}/.local/share/winapps/detected"
         source "${HOME}/.local/share/winapps/detected"
@@ -203,7 +203,7 @@ MIME_TYPES=\"\"
     fi
 }
 
-_wa_config_windows() {
+_config_windows() {
     echo -n "  Configuring Windows..."
     if [ "${USEDEMO:-0}" != 1 ]; then
         ${SUDO} rm -f "${APP_PATH}/windows.desktop"
@@ -228,7 +228,7 @@ ${BIN_PATH}/winapps windows
     echo " Finished."
 }
 
-_wa_uninstall_user() {
+_uninstall_user() {
     echo "Uninstalling (user)..."
     rm -rf "${HOME}/.local/share/winapps" "${HOME}/.local/bin/winapps"
     for F in $(grep -l -d skip "bin/winapps" "${HOME}/.local/share/applications/"*); do
@@ -243,7 +243,7 @@ _wa_uninstall_user() {
     done
 }
 
-_wa_uninstall_sys() {
+_uninstall_sys() {
     echo "Uninstalling (system)..."
     ${SUDO} rm -rf "/usr/local/share/winapps" "/usr/local/bin/winapps"
     for F in $(grep -l -d skip "winapps" "/usr/share/applications/"*); do
@@ -374,16 +374,12 @@ main() {
         fi
     fi
 
-    if [ -f "$path_share/run" ]; then
-        last_run=$(stat -t -c %Y "$path_share/run")
-        touch "$path_share/run"
-        this_run=$(stat -t -c %Y "$path_share/run")
-        if ((this_run - last_run < 2)); then
-            echo "time is too short!"
-            exit 1
-        fi
-    else
-        touch "$path_share/run"
+    last_run=$(stat -t -c %Y "$path_share/run")
+    touch "$path_share/run"
+    this_run=$(stat -t -c %Y "$path_share/run")
+    if ((this_run - last_run < 2)); then
+        echo "time is too short!"
+        exit 1
     fi
 
     RDP_NAME="${RDP_NAME:-RDPWindows}"
