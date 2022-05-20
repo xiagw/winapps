@@ -292,9 +292,9 @@ _debug_log() {
 }
 
 _installer() {
-    path_script="$(cd "$(dirname "$0")" && pwd)"
+    # path_script="$(cd "$(dirname "$0")" && pwd)"
     INSTALLED_EXES=()
-    source "${path_script}/inquirer.sh"
+    source "${path_script}/bin/inquirer.sh"
 
     while [[ "${#}" -ge 0 ]]; do
         case "${1}" in
@@ -310,12 +310,12 @@ _installer() {
             USEDEMO=1
             ;;
         --uninstall)
-            _wa_uninstall_user
-            _wa_uninstall_sys
+            _uninstall_user
+            _uninstall_sys
             ;;
         *)
             if [[ "${#}" -gt 0 ]]; then
-                _wa_usage
+                _usage
                 exit 1
             fi
             OPTIONS=(User System)
@@ -327,22 +327,22 @@ _installer() {
     done
 
     echo "Removing any old configurations..."
-    _wa_uninstall_user
-    _wa_uninstall_sys
+    _uninstall_user
+    _uninstall_sys
 
     echo "Installing..."
     # Inititialize
-    _wa_install
+    _install
 
     # Check for installed apps
-    _wa_find_installed
+    _find_installed
 
     # Install windows
-    _wa_config_windows
+    _config_windows
 
     # Configure apps
-    _wa_config_apps
-    _wa_config_detected_apps
+    _config_apps
+    _config_detected_apps
 
     echo "Installation complete."
 }
@@ -355,13 +355,12 @@ main() {
 
     [ -d "$path_conf" ] || mkdir -p "$path_conf"
     [ -d "${path_share}" ] || mkdir -p "$path_share"
-    if [ -f "$file_conf" ]; then
-        source "${file_conf}"
-    else
-        cp "$path_script/../docs/winapps-example.conf" "$file_conf"
+    if [ ! -f "$file_conf" ]; then
+        cp "$path_script/docs/example-winapps.conf" "$file_conf"
         echo "You need to modify $file_conf, exit."
         exit 1
     fi
+    source "${file_conf}"
 
     if ! command -v xfreerdp >/dev/null; then
         ## try to install the software on Ubuntu
@@ -370,6 +369,7 @@ main() {
         else
             echo "You need xfreerdp!"
             echo "  sudo apt-get install -y freerdp2-x11"
+            echo "  sudo yum install -y freerdp2-x11"
             exit
         fi
     fi
