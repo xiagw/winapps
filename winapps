@@ -348,7 +348,7 @@ _installer() {
 }
 
 main() {
-    path_script="$(cd "$(dirname "$0")" && pwd)"
+    path_script="$(dirname "$(readlink -f "$0")")"
     path_conf="${HOME}/.config/winapps"
     path_share="${HOME}/.local/share/winapps"
     file_conf="${path_conf}/winapps.conf"
