@@ -360,6 +360,7 @@ main() {
         echo "You need to modify $file_conf, exit."
         exit 1
     fi
+    source "${file_conf}"
 
     _install_xfreerdp
 
