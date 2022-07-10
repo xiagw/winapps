@@ -93,12 +93,13 @@ If this VM is in KVM and you want to use auto-IP detection, you will need to nam
 ### Step 2: Download the repo and prerequisites
 To get things going, use:
 ``` bash
-sudo apt-get install -y freerdp2-x11
+# sudo apt-get install -y freerdp2-x11
 git clone https://github.com/xiagw/winapps.git
 cd winapps
+./winapps check
 ```
 ### Step 3: Creating your WinApps configuration file
-You will need to create a `~/.config/winapps/winapps.conf` configuration file with the following information in it:
+You will need to create or modify `~/.config/winapps/winapps.conf` with the following information in it:
 ``` bash
 ## !!! CHANGE ME !!! your windows logon name
 RDP_USER="MyWindowsUser"
@@ -127,7 +128,7 @@ Options:
 ### Step 4: Run the WinApps installer
 Lastly, check that FreeRDP can connect with:
 ```
-bin/winapps check
+./winapps check
 ```
 You will see output from FreeRDP, as well as potentially have to accept the initial certificate. After that, a Windows Explorer window should pop up. You can close this window and press `Ctrl-C` to cancel out of FreeRDP.
 
@@ -140,7 +141,7 @@ If this step fails, try restarting the VM, or your problem could be related to:
 
 Then the final step is to run the installer which will prompt you for a system or user install:
 ``` bash
-./bin/installer.sh
+./winapps install
 ```
 This will take you through the following process:
 
@@ -159,23 +160,23 @@ When running the installer, it will check for if any configured apps are install
 ## Running applications manually
 WinApps offers a manual mode for running applications that are not configured. This is completed with the `manual` flag. Executables that are in the path do not require full path definition.
 ``` bash
-./bin/winapps manual "C:\my\directory\executableNotInPath.exe"
-./bin/winapps manual executableInPath.exe
+./winapps manual "C:\my\directory\executableNotInPath.exe"
+./winapps manual executableInPath.exe
 ```
 
 ## Checking for new application support
 The installer can be run multiple times, so simply run the below again and it will remove any current installations and update for the latest applications.
 ``` bash
-./bin/installer.sh
+./winapps install
 ```
 
 ## Optional installer command line arguments
 The following optional commands can be used to manage your application configurations without prompts:
 ``` bash
-./bin/installer.sh --user                # Configure applications for the current user
-./bin/installer.sh --system              # Configure applications for the entire system
-./bin/installer.sh --user --uninstall    # Remove all configured applications for the current user
-./bin/installer.sh --system --uninstall  # Remove all configured applications for the entire system
+./winapps install --user                # Configure applications for the current user
+./winapps install --system              # Configure applications for the entire system
+./winapps install --user --uninstall    # Remove all configured applications for the current user
+./winapps install --system --uninstall  # Remove all configured applications for the entire system
 ```
 
 ## Installation on Arch Linux
