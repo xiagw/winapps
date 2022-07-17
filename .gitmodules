@@ -1,0 +1,3 @@
+[submodule "inquirer"]
+	path = inquirer
+	url = https://github.com/kahkhang/Inquirer.sh.git
