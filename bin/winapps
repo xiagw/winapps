@@ -61,7 +61,7 @@ main() {
         fi
     fi
     debug_log "START"
-    last_run=$(stat -t -c %Y "$path_share/run")
+    last_run=$(stat -t -c %Y "$path_share/run" 2>/dev/null)
     debug_log "last_run:${last_run}"
     touch "$path_share/run"
     this_run=$(stat -t -c %Y "$path_share/run")
