@@ -178,6 +178,9 @@ Once you are finished, restart the VM, but do not log in. Simply close the VM vi
 Optimize performance, Delete the built-in program
 https://github.com/xiagw/windows-lite-1903
 
+xiagw/Win10-Initial-Setup-Script: PowerShell script for automation of routine tasks done after fresh installations of Windows 10 / Server 2016 / Server 2019
+https://github.com/xiagw/Win10-Initial-Setup-Script
+
 ### Define a VM from XML
 This expert guide for XML imports is specific to Ubuntu 20.04 and may not work on all hardware platforms.
 
