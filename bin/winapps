@@ -7,8 +7,8 @@ debug_log() {
 }
 
 _check_sudo() {
-    # determine whether the user has sudo permission
-    if [[ "$USER" != "root" ]]; then
+    # Determine whether the user has sudo permission
+    if [[ "$EUID" -ne 0 ]]; then
         if sudo -l -U "$USER" | grep -q "ALL"; then
             echo "User $USER has sudo permission."
             pre_sudo="sudo"
@@ -17,75 +17,96 @@ _check_sudo() {
             echo "Won't install xfreerdp automatically."
             exit 1
         fi
+    else
+        pre_sudo=""
     fi
-    ## yum or apt
-    if command -v apt; then
+
+    # Check if apt, yum, or dnf is installed
+    if command -v apt >/dev/null; then
         install_cmd="$pre_sudo apt"
-    elif command -v yum; then
+    elif command -v yum >/dev/null; then
         install_cmd="$pre_sudo yum"
-    elif command -v dnf; then
+    elif command -v dnf >/dev/null; then
         install_cmd="$pre_sudo dnf"
     else
-        echo "not found apt/yum/dnf"
+        echo "Package manager not found.(apt/yum/dnf)"
         exit 1
     fi
 }
+
 
 main() {
     me_name="$(basename "$0")"
     me_path="$(dirname "$(readlink -f "$0")")"
     me_log="${me_path}/${me_name}.log"
 
-    path_conf="${HOME}/.config/winapps"
-    path_share="${HOME}/.local/share/winapps"
-    file_conf="${path_conf}/winapps.conf"
+    path_conf="$HOME/.config/winapps"
+    path_share="$HOME/.local/share/winapps"
+    file_conf="$path_conf/winapps.conf"
+
     [ -d "$path_conf" ] || mkdir -p "$path_conf"
     [ -d "${path_share}" ] || mkdir -p "$path_share"
     if [ -f "$file_conf" ]; then
-        source "${file_conf}"
+        source "$file_conf"
     else
         cp "$me_path/../docs/winapps-example.conf" "$file_conf"
         echo "Please change $file_conf configuration. Exiting..."
-        return 1
+        exit 1
     fi
 
     if ! command -v xfreerdp >/dev/null; then
-        echo "Try install xfreerdp..."
-        _check_sudo
-        if $install_cmd install -y freerdp2-x11; then
-            echo "Installed xfreerdp"
-        else
-            echo "You need xfreerdp!"
-            echo "  $install_cmd install -y freerdp2-x11"
-            return 1
-        fi
+        echo "Installing xfreerdp..."
+        sudo apt-get update
+        sudo apt-get install -y freerdp2-x11 || {
+            echo "Failed to install xfreerdp" >&2
+            exit 1
+        }
     fi
+
     debug_log "START"
+
+    # Get the timestamp of the last run
     last_run=$(stat -t -c %Y "$path_share/run" 2>/dev/null)
+
     debug_log "last_run:${last_run}"
+
+    # Touch the run file to update its timestamp
     touch "$path_share/run"
+
+    # Get the timestamp of this run
     this_run=$(stat -t -c %Y "$path_share/run")
+
     debug_log "this_run:${this_run}"
+
+    # Check if the time difference between this run and the last run is less than 2 seconds
     if ((this_run - last_run < 2)); then
         echo "time too short"
-        return 1
+        exit 1
     fi
+
+    # Set the default value of RDP_NAME
     RDP_NAME="${RDP_NAME:-RDPWindows}"
-    if [ -z "${RDP_IP}" ]; then
+
+    # Check if RDP_IP is empty
+    if [[ -z "$RDP_IP" ]]; then
+        # Check if the user is a member of the libvirt group
         if ! groups | grep -q libvirt; then
             echo "You are not a member of the libvirt group. Run the below then reboot."
             echo "  sudo usermod -a -G libvirt $(whoami)"
             echo "  sudo usermod -a -G kvm $(whoami)"
-            return 1
+            exit 1
         fi
 
+        # Check if the RDP VM is running
         if ! virsh list | grep -q "${RDP_NAME}"; then
             echo "${RDP_NAME} is not running, run:"
             echo "  virsh start ${RDP_NAME}"
-            return 1
+            exit 1
         fi
-        RDP_IP=$(virsh net-dhcp-leases default | grep "${RDP_NAME}" | awk '{print $5}')
-        RDP_IP=${RDP_IP%%\/*}
+
+        # Get the IP address of the RDP VM
+        RDP_IP=$(virsh net-dhcp-leases default | awk "/${RDP_NAME}/ {print \$5; exit}")
+        RDP_IP=${RDP_IP%%/*}
     fi
 
     if [ "${MULTIMON}" = "true" ]; then
