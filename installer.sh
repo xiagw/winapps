@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091,SC1090
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 MAKEDEMO=0
 USEDEMO=0
 
-. "${DIR}/install/inquirer.sh"
+. "${DIR}/bin/inquirer.sh"
 
 INSTALLED_EXES=()
 
 function waUsage() {
-	echo 'Usage:
-  ./installer.sh --user    # Install everything in ${HOME}
-  ./installer.sh --system  # Install everything in /usr'
+	echo "Usage:
+  ./installer.sh --user    # Install everything in \${HOME}
+  ./installer.sh --system  # Install everything in /usr"
 	exit
 }
 
@@ -30,18 +31,19 @@ function waInstall() {
 function waFindInstalled() {
 	echo -n "  Checking for installed apps in RDP machine (this may take a while)..."
 	if [ $USEDEMO != 1 ]; then
-		rm -f ${HOME}/.local/share/winapps/installed.bat
-		rm -f ${HOME}/.local/share/winapps/installed.tmp
-		rm -f ${HOME}/.local/share/winapps/installed
-		rm -f ${HOME}/.local/share/winapps/detected
-		cp "${DIR}/install/ExtractPrograms.ps1" ${HOME}/.local/share/winapps/ExtractPrograms.ps1
-		for F in $(ls "${DIR}/apps"); do
+		rm -f "${HOME}/.local/share/winapps/installed.bat"
+		rm -f "${HOME}/.local/share/winapps/installed.tmp"
+		rm -f "${HOME}/.local/share/winapps/installed"
+		rm -f "${HOME}/.local/share/winapps/detected"
+		cp "${DIR}/bin/ExtractPrograms.ps1" "${HOME}/.local/share/winapps/ExtractPrograms.ps1"
+		for F in "${DIR}"/apps/*; do
+			F=$(basename "$F")
 			. "${DIR}/apps/${F}/info"
-			echo "IF EXIST \"${WIN_EXECUTABLE}\" ECHO ${F} >> \\\\tsclient\\home\\.local\\share\\winapps\\installed.tmp" >> ${HOME}/.local/share/winapps/installed.bat
+			printf "IF EXIST \"%s\" ECHO %s >> \\\\tsclient\\home\\.local\\share\\winapps\\installed.tmp\n" "${WIN_EXECUTABLE}" "${F}" >> "${HOME}/.local/share/winapps/installed.bat"
 		done;
-		echo "powershell.exe -ExecutionPolicy Bypass -File \\\\tsclient\\home\\.local\\share\\winapps\\ExtractPrograms.ps1 > \\\\tsclient\home\\.local\\share\\winapps\\detected" >> ${HOME}/.local/share/winapps/installed.bat
-		echo "RENAME \\\\tsclient\\home\\.local\\share\\winapps\\installed.tmp installed" >> ${HOME}/.local/share/winapps/installed.bat
-		xfreerdp /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:${RDP_IP} +auto-reconnect +home-drive -wallpaper /span /wm-class:"RDPInstaller" /app:"C:\Windows\System32\cmd.exe" /app-icon:"${DIR}/../icons/windows.svg" /app-cmd:"/C \\\\tsclient\\home\\.local\\share\\winapps\\installed.bat" 1> /dev/null 2>&1 &
+		printf "powershell.exe -ExecutionPolicy Bypass -File \\\\tsclient\\home\\.local\\share\\winapps\\ExtractPrograms.ps1 > \\\\tsclient\\home\\.local\\share\\winapps\\detected\n" >> "${HOME}/.local/share/winapps/installed.bat"
+		printf "RENAME \\\\tsclient\\home\\.local\\share\\winapps\\installed.tmp installed\n" >> "${HOME}/.local/share/winapps/installed.bat"
+		xfreerdp /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:"${RDP_IP}" +auto-reconnect +home-drive -wallpaper /span /wm-class:"RDPInstaller" /app:"C:\\Windows\\System32\\cmd.exe" /app-icon:"${DIR}/../icons/windows.svg" /app-cmd:"/C \\\\tsclient\\home\\.local\\share\\winapps\\installed.bat" 1> /dev/null 2>&1 &
 		COUNT=0
 		while [ ! -f "${HOME}/.local/share/winapps/installed" ]; do
 			sleep 5
@@ -57,18 +59,18 @@ function waFindInstalled() {
 				echo "  - Not enabling RDP in the Windows VM"
 				echo "  - Not being able to connect to the IP of the VM"
 				echo "  - Incorrect user credentials in winapps.conf"
-				echo "  - Not merging install/RDPApps.reg into the VM"
+				echo "  - Not merging docs/RDPApps.reg into the VM"
 				exit
 			fi
 		done
 		if [ $MAKEDEMO = 1 ]; then
 			rm -rf /tmp/winapps_demo
-			cp -a ${HOME}/.local/share/winapps /tmp/winapps_demo
+			cp -a "${HOME}/.local/share/winapps" /tmp/winapps_demo
 			exit
 		fi
 	else
-		rm -rf ${HOME}/.local/share/winapps
-		cp -a /tmp/winapps_demo ${HOME}/.local/share/winapps
+		rm -rf "${HOME}/.local/share/winapps"
+		cp -a /tmp/winapps_demo "${HOME}/.local/share/winapps"
 		#sleep 3
 	fi
 	echo " Finished."
@@ -92,7 +94,7 @@ MimeType=${MIME_TYPES}
 " |${SUDO} tee "${APP_PATH}/${1}.desktop" > /dev/null
 			${SUDO} rm -f "${BIN_PATH}/${1}"
 			echo "#!/usr/bin/env bash
-${BIN_PATH}/winapps ${1} $@
+${BIN_PATH}/winapps ${1} $*
 " |${SUDO} tee "${BIN_PATH}/${1}" > /dev/null
 			${SUDO} chmod a+x "${BIN_PATH}/${1}"
 		fi
@@ -101,13 +103,15 @@ ${BIN_PATH}/winapps ${1} $@
 
 function waConfigureApps() {
 	APPS=()
-	for F in $(cat "${HOME}/.local/share/winapps/installed" |sed 's/\r/\n/g'); do
-		. "${DIR}/apps/${F}/info"
-		APPS+=("${FULL_NAME} (${F})")
-		INSTALLED_EXES+=("$(echo "${WIN_EXECUTABLE##*\\}" |tr '[:upper:]' '[:lower:]')")
-	done
-	IFS=$'\n' APPS=($(sort <<<"${APPS[*]}"))
-	unset IFS
+	while IFS= read -r F || [ -n "$F" ]; do
+		F=${F//$'\r'/}
+		if [ -n "$F" ]; then
+			. "${DIR}/apps/${F}/info"
+			APPS+=("${FULL_NAME} (${F})")
+			INSTALLED_EXES+=("$(echo "${WIN_EXECUTABLE##*\\}" |tr '[:upper:]' '[:lower:]')")
+		fi
+	done < "${HOME}/.local/share/winapps/installed"
+	readarray -t APPS < <(printf '%s\n' "${APPS[@]}" | sort)
 	OPTIONS=("Set up all detected pre-configured applications" "Select which pre-configured applications to set up" "Do not set up any pre-configured applications")
 	menuFromArr APP_INSTALL "How would you like to handle WinApps pre-configured applications?" "${OPTIONS[@]}"
 	if [ "${APP_INSTALL}" = "Select which pre-configured applications to set up" ]; then
@@ -118,11 +122,11 @@ function waConfigureApps() {
 			APP="${APP%%)}"
 			echo "${APP}" >> "${HOME}/.local/share/winapps/installed"
 		done
-	fi	
+	fi
 	${SUDO} cp "${DIR}/bin/winapps" "${BIN_PATH}/winapps"
 	COUNT=0
 	if [ "${APP_INSTALL}" != "Do not set up any pre-configured applications" ]; then
-		for F in $(cat "${HOME}/.local/share/winapps/installed" |sed 's/\r/\n/g'); do
+		while IFS= read -r F; do
 			COUNT=$((COUNT + 1))
 			${SUDO} cp -r "apps/${F}" "${SYS_PATH}/apps"
 			waConfigureApp "${F}" svg
@@ -130,7 +134,7 @@ function waConfigureApps() {
 	fi
 	rm -f "${HOME}/.local/share/winapps/installed"
 	rm -f "${HOME}/.local/share/winapps/installed.bat"
-	if (( $COUNT == 0 )); then
+	if (( COUNT == 0 )); then
 		echo "  No configured applications."
 	fi
 }
@@ -147,8 +151,7 @@ function waConfigureDetectedApps() {
 				APPS+=("${NAMES[$I]} (${EXE})")
 			fi
 		done
-		IFS=$'\n' APPS=($(sort <<<"${APPS[*]}"))
-		unset IFS
+		readarray -t APPS < <(printf '%s\n' "${APPS[@]}" | sort)
 		OPTIONS=("Set up all detected applications" "Select which applications to set up" "Do not set up any applications")
 		menuFromArr APP_INSTALL "How would you like to handle other detected applications?" "${OPTIONS[@]}"
 		if [ "${APP_INSTALL}" = "Select which applications to set up" ]; then
@@ -168,7 +171,7 @@ function waConfigureDetectedApps() {
 		fi
 		COUNT=0
 		if [ -f "${HOME}/.local/share/winapps/installed" ]; then
-			while read LINE; do
+			while IFS= read -r LINE; do
 				EXE="${LINE%|*}"
 				NAME="${LINE#*|}"
 				for I in "${!NAMES[@]}"; do
@@ -199,7 +202,7 @@ MIME_TYPES=\"\"
 			rm -f "${HOME}/.local/share/winapps/installed"
 		fi
 		rm -f "${HOME}/.local/share/winapps/installed.bat"
-		if (( $COUNT == 0 )); then
+		if (( COUNT == 0 )); then
 			echo "  No configured applications."
 		fi
 	fi
@@ -234,14 +237,14 @@ ${BIN_PATH}/winapps windows
 function waUninstallUser() {
 	rm -f "${HOME}/.local/bin/winapps"
 	rm -rf "${HOME}/.local/share/winapps"
-	for F in $(grep -l -d skip "bin/winapps" "${HOME}/.local/share/applications/"*); do
+	find "${HOME}/.local/share/applications/" -type f -exec grep -l "bin/winapps" {} \; | while read -r F; do
 		echo -n "  Removing ${F}..."
-		${SUDO} rm ${F}
+		${SUDO} rm "${F}"
 		echo " Finished."
 	done
-	for F in $(grep -l -d skip "bin/winapps" "${HOME}/.local/bin/"*); do
+	grep -l -d skip "bin/winapps" "${HOME}/.local/bin/"* | while read -r F; do
 		echo -n "  Removing ${F}..."
-		${SUDO} rm ${F}
+		${SUDO} rm "${F}"
 		echo " Finished."
 	done
 }
@@ -249,22 +252,22 @@ function waUninstallUser() {
 function waUninstallSystem() {
 	${SUDO} rm -f "/usr/local/bin/winapps"
 	${SUDO} rm -rf "/usr/local/share/winapps"
-	for F in $(grep -l -d skip "bin/winapps" "/usr/share/applications/"*); do
+	grep -l -d skip "bin/winapps" "/usr/share/applications/"* | while read -r F; do
 		if [ -z "${SUDO}" ]; then
 			waNoSudo
 		fi
 		echo -n "  Removing ${F}..."
-		${SUDO} rm ${F}
+		${SUDO} rm "${F}"
 		echo " Finished."
 	done
-	for F in $(grep -l -d skip "bin/winapps" "/usr/local/bin/"*); do
+	while IFS= read -r F; do
 		if [ -z "${SUDO}" ]; then
 			waNoSudo
 		fi
 		echo -n "  Removing ${F}..."
-		${SUDO} rm ${F}
+		${SUDO} rm "${F}"
 		echo " Finished."
-	done
+	done < <(grep -l -d skip "bin/winapps" "/usr/local/bin/"*)
 }
 
 if [ -z "${1}" ]; then

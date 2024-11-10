@@ -1,108 +1,242 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091,SC1090
 
-if [ ! -f "${HOME}/.config/winapps/winapps.conf" ] && [ ! -f "${HOME}/.winapps" ]; then
-	echo "You need to create a ~/.config/winapps/winapps.conf configuration. Exiting..."
-	exit
-fi
+error_exit() {
+	echo "Error: $1" >&2
+	exit 1
+}
 
-DIR="$(dirname "$(readlink -f "$0")")"
-RUN="$(date)-${RANDOM}"
+validate_config() {
+	local required_vars=("RDP_USER" "RDP_PASS" "RDP_DOMAIN")
+	for var in "${required_vars[@]}"; do
+		if [ -z "${!var}" ]; then
+			error_exit "Missing required configuration: ${var}"
+		fi
+	done
+}
 
-if [ ! -d "${HOME}/.local/share/winapps" ]; then
-	mkdir -p "${HOME}/.local/share/winapps"
-fi
-
-RDP_SCALE=100
-
-if [ -f "${HOME}/.config/winapps/winapps.conf" ]; then
-	. "${HOME}/.config/winapps/winapps.conf"
-else
-	. "${HOME}/.winapps"
-fi
-
-function dprint() {
+dprint() {
 	if [ "${DEBUG}" = "true" ]; then
-		echo "[${RUN}] ${1}" >> "${HOME}/.local/share/winapps/winapps.log"
+		local timestamp
+		timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+		echo "[${timestamp}][${RUN}] ${1}" >>"${WINAPPS_LOG_FILE}"
 	fi
 }
 
+rotate_logs() {
+	local max_size=$((10 * 1024 * 1024)) # 10MB
+
+	if [ -f "${WINAPPS_LOG_FILE}" ] && [ "$(stat -f%z "${WINAPPS_LOG_FILE}")" -gt $max_size ]; then
+		mv "${WINAPPS_LOG_FILE}" "${WINAPPS_LOG_FILE}.old"
+	fi
+}
+
+# 添加帮助信息
+show_help() {
+	cat <<EOF
+Usage: $(basename "$0") [OPTION] [FILE]
+Options:
+    windows     Launch Windows desktop
+    check      Check RDP connection
+    manual     Launch specific Windows application
+    install    Install new application
+    help       Show this help message
+EOF
+}
+
+# 新增一个通用的 RDP 启动函数
+launch_rdp() {
+	local app_args=("$@")
+
+	xfreerdp "${RDP_FLAGS}" \
+		/d:"${RDP_DOMAIN}" \
+		/u:"${RDP_USER}" \
+		/p:"${RDP_PASS}" \
+		/v:"${RDP_IP}" \
+		+auto-reconnect \
+		+clipboard \
+		+home-drive \
+		-wallpaper \
+		/scale:${RDP_SCALE} \
+		/dynamic-resolution \
+		/${MULTI_FLAG} \
+		"${app_args[@]}" 1>/dev/null 2>&1 &
+}
+
+# 检查应用程序信息文件
+find_app_info() {
+	local app_name="$1"
+	local info_paths=(
+		"${DIR}/../apps/${app_name}"
+		"${HOME}/.local/share/winapps/apps/${app_name}"
+		"/usr/local/share/winapps/apps/${app_name}"
+	)
+
+	for path in "${info_paths[@]}"; do
+		if [ -e "${path}/info" ]; then
+			. "${path}/info"
+			ICON="${path}/icon.svg"
+			return 0
+		fi
+	done
+
+	error_exit "Application ${app_name} not found. Please run 'install.sh' first."
+}
+
+# 加载配置文件
+load_config() {
+	for config_path in "${CONFIG_PATHS[@]}"; do
+		if [ -f "$config_path" ]; then
+			. "$config_path"
+			return 0
+		fi
+	done
+	echo "A sample configuration file can be found at docs/winapps.conf.example"
+	error_exit "Configuration file not found. Please create ~/.config/winapps/winapps.conf"
+}
+
+# 检查必需的命令依赖
+check_dependencies() {
+	local deps=("xfreerdp")
+
+	for dep in "${deps[@]}"; do
+		if ! command -v "$dep" >/dev/null 2>&1; then
+			case "$dep" in
+				"xfreerdp")
+					error_exit "$dep not found. Please install with: sudo apt-get install -y freerdp2-x11"
+					;;
+				*)
+					error_exit "Required dependency not found: $dep"
+					;;
+			esac
+		fi
+	done
+}
+
+# 确保必要目录存在
+init_directories() {
+	local dirs=(
+		"${WINAPPS_CONFIG_DIR}"
+		"${WINAPPS_DATA_DIR}"
+		"${WINAPPS_APPS_DIR}"
+	)
+
+	for dir in "${dirs[@]}"; do
+		mkdir -p "$dir"
+	done
+}
+
+# 定义常用目录路径
+readonly WINAPPS_CONFIG_DIR="${HOME}/.config/winapps"
+readonly WINAPPS_DATA_DIR="${HOME}/.local/share/winapps"
+readonly WINAPPS_APPS_DIR="${WINAPPS_DATA_DIR}/apps"
+readonly WINAPPS_LOG_FILE="${WINAPPS_DATA_DIR}/winapps.log"
+readonly WINAPPS_RUN_FILE="${WINAPPS_DATA_DIR}/run"
+
+RDP_SCALE=100
+DIR="$(dirname "$(readlink -f "$0")")"
+RUN="$(date)-${RANDOM}"
+
+# 定义配置文件路径
+readonly CONFIG_PATHS=(
+	"${WINAPPS_CONFIG_DIR}/winapps.conf"
+	"${HOME}/.winapps"
+)
+
+# 在主逻辑开始前初始化目录
+init_directories
+
+load_config
+validate_config
+check_dependencies
+
+rotate_logs
+
 dprint "START"
 
-if [ -f "${HOME}/.local/share/winapps/run" ]; then
-	LAST_RAN=$(stat -t -c %Y "${HOME}/.local/share/winapps/run")
+if [ -f "${WINAPPS_RUN_FILE}" ]; then
+	# 获取上次运行时间戳
+	LAST_RAN=$(stat -t -c %Y "${WINAPPS_RUN_FILE}")
 	dprint "LAST_RAN:${LAST_RAN}"
-	touch "${HOME}/.local/share/winapps/run"
-	THIS_RUN=$(stat -t -c %Y "${HOME}/.local/share/winapps/run")
+
+	# 更新当前时间戳
+	touch "${WINAPPS_RUN_FILE}"
+	THIS_RUN=$(stat -t -c %Y "${WINAPPS_RUN_FILE}")
 	dprint "THIS_RUN:${THIS_RUN}"
-	if (( $THIS_RUN - $LAST_RAN < 2 )); then
+
+	# 如果距离上次运行时间小于2秒，则退出
+	if ((THIS_RUN - LAST_RAN < 2)); then
 		exit
 	fi
 else
-	touch "${HOME}/.local/share/winapps/run"
-fi
-
-if [ -z "$(which xfreerdp)" ]; then
-	echo "You need xfreerdp!"
-	echo "  sudo apt-get install -y freerdp2-x11"
-	exit
+	# 如果是首次运行，创建运行标记文件
+	touch "${WINAPPS_RUN_FILE}"
 fi
 
 if [ -z "${RDP_IP}" ]; then
-	if [ -z "$(groups |grep libvirt)" ]; then
-		echo "You are not a member of the libvirt group. Run the below then reboot."
-		echo '  sudo usermod -a -G libvirt $(whoami)'
-		echo '  sudo usermod -a -G kvm $(whoami)'
-		exit
-	fi
-	if [ -z "$(virsh list |grep RDPWindows)" ]; then
-		echo "RDPWindows is not running, run:"
-		echo "  virsh start RDPWindows"
-		exit
-	fi
-	RDP_IP=$(virsh net-dhcp-leases default |grep RDPWindows |awk '{print $5}')
-	RDP_IP=${RDP_IP%%\/*}
+    # 1. 检查用户是否在 libvirt 组中
+    if ! groups | grep -q libvirt; then
+        echo "You are not a member of the libvirt group. Run the below then reboot."
+        echo "  sudo usermod -a -G libvirt $(whoami)"
+        echo "  sudo usermod -a -G kvm $(whoami)"
+        exit
+    fi
+
+    # 2. 检查名为 RDPWindows 的虚拟机是否在运行
+    if ! virsh list | grep -q RDPWindows; then
+        echo "RDPWindows is not running, run:"
+        echo "  virsh start RDPWindows"
+        exit
+    fi
+
+    # 3. 自动获取虚拟机的 IP 地址
+    RDP_IP=$(virsh net-dhcp-leases default | grep RDPWindows | awk '{print $5}')
+    RDP_IP=${RDP_IP%%\/*}
 fi
 
 dprint "1:${1}"
 dprint "2:${2}"
-dprint "@:${@}"
+dprint "@:${*}"
 
 MULTI_FLAG="span"
 if [ "${MULTIMON}" = "true" ]; then
 	MULTI_FLAG="multimon"
 fi
 
-if [ "${1}" = "windows" ]; then
-	xfreerdp ${RDP_FLAGS} /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:${RDP_IP} /scale:${RDP_SCALE} /dynamic-resolution +clipboard +auto-reconnect +home-drive /wm-class:"Microsoft Windows" 1> /dev/null 2>&1 &
-elif [ "${1}" = "check" ]; then
+# 在 case 语句中添加 help 选项
+case "${1}" in
+"help" | "-h" | "--help")
+	show_help
+	exit 0
+	;;
+"windows")
+	launch_rdp /wm-class:"Microsoft Windows"
+	;;
+"check")
 	dprint "CHECK"
-	xfreerdp ${RDP_FLAGS} /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:${RDP_IP} +auto-reconnect +clipboard +home-drive -wallpaper /scale:${RDP_SCALE} /dynamic-resolution /${MULTI_FLAG} /app:"explorer.exe"
-elif [ "${1}" = "manual" ]; then
+	launch_rdp /app:"explorer.exe"
+	;;
+"manual")
 	dprint "MANUAL:${2}"
-	xfreerdp ${RDP_FLAGS} /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:${RDP_IP} +auto-reconnect +home-drive +clipboard -wallpaper /scale:${RDP_SCALE} /dynamic-resolution /${MULTI_FLAG} /app:"${2}" 1> /dev/null 2>&1 &
-elif [ "${1}" != "install" ]; then
+	[ -z "${2}" ] && error_exit "No application specified for manual launch"
+	launch_rdp /app:"${2}"
+	;;
+"install") ;;
+*)
 	dprint "DIR:${DIR}"
-	if [ -e "${DIR}/../apps/${1}/info" ]; then
-		. "${DIR}/../apps/${1}/info"
-		ICON="${DIR}/../apps/${1}/icon.svg"
-	elif [ -e "${HOME}/.local/share/winapps/apps/${1}/info" ]; then
-		. "${HOME}/.local/share/winapps/apps/${1}/info"
-		ICON="${HOME}/.local/share/winapps/apps/${1}/icon.svg"
-	elif [ -e "/usr/local/share/winapps/apps/${1}/info" ]; then
-		. "/usr/local/share/winapps/apps/${1}/info"
-		ICON="/usr/local/share/winapps/apps/${1}/icon.svg"
-	else
-		echo "You need to run 'install.sh' first."
-		exit 1
-	fi
+	find_app_info "${1}"
+
 	if [ -n "${2}" ]; then
 		dprint "HOME:${HOME}"
 		FILE=$(echo "${2}" | sed 's|'"${HOME}"'|\\\\tsclient\\home|;s|/|\\|g;s|\\|\\\\|g')
 		dprint "FILE:${FILE}"
-		xfreerdp ${RDP_FLAGS} /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:${RDP_IP} +auto-reconnect +clipboard +home-drive -wallpaper /scale:${RDP_SCALE} /dynamic-resolution /${MULTI_FLAG} /wm-class:"${FULL_NAME}" /app:"${WIN_EXECUTABLE}" /app-icon:"${ICON}" /app-cmd:"\"${FILE}\"" 1> /dev/null 2>&1 &
+		launch_rdp /wm-class:"${FULL_NAME}" /app:"${WIN_EXECUTABLE}" /app-icon:"${ICON}" /app-cmd:"\"${FILE}\""
 	else
-		xfreerdp ${RDP_FLAGS} /d:"${RDP_DOMAIN}" /u:"${RDP_USER}" /p:"${RDP_PASS}" /v:${RDP_IP} +auto-reconnect +clipboard +home-drive -wallpaper /scale:${RDP_SCALE} /dynamic-resolution /${MULTI_FLAG} /wm-class:"${FULL_NAME}" /app:"${WIN_EXECUTABLE}" /app-icon:"${ICON}" 1> /dev/null 2>&1 &
+		launch_rdp /wm-class:"${FULL_NAME}" /app:"${WIN_EXECUTABLE}" /app-icon:"${ICON}"
 	fi
-fi
+	;;
+esac
 
 dprint "END"
+
+

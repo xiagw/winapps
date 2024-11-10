@@ -80,7 +80,14 @@ Note: The officially configured application list below is fueled by the communit
   </tr>
 </table>
 
+## Configuration
+See [docs/winapps.conf.example](docs/winapps.conf.example) for a complete example configuration file with detailed comments.
+
 ## Documentation
 
 Latest documentation available at: [https://nowsci.com/winapps/](https://nowsci.com/winapps/)
+
+## Windows VM Configuration
+1. Run `bin/EnableRDP.ps1` as Administrator in Windows
+2. Ensure RDP is enabled in Windows settings
 

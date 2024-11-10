@@ -1,0 +1,35 @@
+# WinApps Configuration File
+# 将此文件复制到 ~/.config/winapps/winapps.conf 并根据您的环境修改配置
+
+#######################
+# 必需的配置项
+#######################
+
+# RDP 连接凭据
+RDP_USER="YourWindowsUsername"     # Windows 用户名
+RDP_PASS="YourWindowsPassword"     # Windows 密码
+RDP_DOMAIN="WORKGROUP"            # Windows 域名（默认为 WORKGROUP）
+
+#######################
+# 可选的配置项
+#######################
+
+# RDP 连接设置
+RDP_IP=""                         # Windows IP 地址
+                                 # 留空则自动检测 KVM 虚拟机 IP
+                                 # 示例: "192.168.1.100"
+
+# 显示设置
+RDP_SCALE=100                    # 显示缩放比例（默认100）
+MULTIMON="false"                 # 多显示器支持
+                                # true: 独立显示
+                                # false: 跨显示器（默认）
+
+# 调试设置
+DEBUG="false"                    # 启用调试日志
+                                # true: 启用
+                                # false: 禁用（默认）
+
+# 其他 RDP 参数（高级用户）
+RDP_FLAGS=""                     # 额外的 FreeRDP 参数
+                                # 示例: "/gfx:AVC444"
